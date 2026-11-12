@@ -55,17 +55,21 @@ final class GestaltManager: ObservableObject {
             // Re-signed certificates often carry several App Groups and only some of
             // them hold a usable container, so try each one instead of trusting one.
             var rejection: Int64 = -1
+            let flagAttempts = ProcessInfo.processInfo.operatingSystemVersion.majorVersion == 26 ? [true, false] : [false]
             for signedGroup in signedGroups {
-                var handle = worse_query(target, signedGroup, false, false)
-                if handle == -4, let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: signedGroup) {
-                    // The exploit swaps Library/Caches for a symlink, so a container
-                    // without Library fails until the directory exists.
-                    try? FileManager.default.createDirectory(at: root.appendingPathComponent("Library/Caches"),
-                                                             withIntermediateDirectories: true)
-                    handle = worse_query(target, signedGroup, false, false)
+                for altFlags in flagAttempts {
+                    var handle = worse_query(target, signedGroup, altFlags, false)
+                    if handle == -4, let root = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: signedGroup) {
+                        // The exploit swaps Library/Caches for a symlink, so a container
+                        // without Library fails until the directory exists.
+                        try? FileManager.default.createDirectory(at: root.appendingPathComponent("Library/Caches"),
+                                                                 withIntermediateDirectories: true)
+                        handle = worse_query(target, signedGroup, altFlags, false)
+                    }
+                    if handle >= 0 { return handle }
+                    rejection = handle
+                    if handle == -1 || handle == -255 { break }
                 }
-                if handle >= 0 { return handle }
-                rejection = handle
             }
             if rejection == -1 {
                 throw GestaltFailure("The signed app has no usable App Group. Enable its App Group capability and sign it again.")
